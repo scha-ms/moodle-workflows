@@ -132,6 +132,25 @@ jobs:
           fetch-depth: 0
           path: calling-repo
 
+      - name: Check out moodle-workflows repository code
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ job.workflow_repository }}
+          ref: ${{ job.workflow_sha }}
+          path: preflight
+          sparse-checkout: |
+            .github/alint-development-artefacts.yml
+            .github/workflows/moodle-plugin-ci.matrix/matrix.json
+          sparse-checkout-cone-mode: false
+
+      - name: Development Leftover Checker
+        uses: asamarts/alint@9f9d34ba0eae3888299b9e570f43338b0e7f2cdb # v0.16.1
+        with:
+          version: v0.16.1
+          path: calling-repo
+          config: preflight/.github/alint-development-artefacts.yml
+          format: github
+
       - name: Detect code changes
         id: detect-code-changes
         run: |
@@ -260,13 +279,6 @@ jobs:
 
           echo "moodle-core-branch=$MOODLE_BRANCH" >> $GITHUB_OUTPUT
           echo "Final Moodle branch: $MOODLE_BRANCH"
-
-      - name: Check out moodle-workflows repository code
-        uses: actions/checkout@v4
-        with:
-          repository: moodle-an-hochschulen/moodle-workflows
-          ref: main
-          path: preflight
 
       - name: Create CI matrix from JSON
         id: preflight-matrix
@@ -468,32 +480,6 @@ jobs:
       - name: Moodle PHPDoc Checker
         if: ${{ !cancelled() }}
         run: moodle-plugin-ci phpdoc --max-warnings 0
-
-      - name: Development Leftover Checker
-        if: ${{ !cancelled() }}
-        run: |
-          echo "Checking for development leftovers..."
-
-          # Define patterns to search for
-          PATTERNS=("@testme" "TODO" "<<<<<<< HEAD")
-
-          # Check each pattern
-          FOUND_ISSUES=false
-          for pattern in "${PATTERNS[@]}"; do
-            echo "Searching for: $pattern"
-            if grep -rn --exclude-dir=.git --exclude-dir=node_modules --exclude-dir=vendor "$pattern" ./plugin/; then
-              FOUND_ISSUES=true
-              echo ""
-            fi
-          done
-
-          # Fail if any issues were found
-          if [ "$FOUND_ISSUES" = true ]; then
-            echo "Development leftovers detected! Please clean up the code."
-            exit 1
-          else
-            echo "No development leftovers found."
-          fi
 
       - name: Validating
         if: ${{ !cancelled() }}

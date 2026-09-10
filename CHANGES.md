@@ -6,6 +6,8 @@ Changes
 
 ### Rolling release
 
+* 2026-09-10 - Move development leftover checks to preflight so violations fail before expensive CI jobs start
+* 2026-09-10 - Extend development leftover checks with alint to reject committed `.gitignore`, IDE artefacts, and `.DS_Store` files
 * 2026-09-10 - Skip expensive CI jobs when a push or pull request only changes non-code files
 * 2026-06-25 - Improve CI concurrency to deduplicate push and pull request runs on the same branch (use `tags-ignore` in the caller workflow's `on: push` trigger to avoid duplicate runs on release)
 * 2026-06-24 - Deduplicate runtime test steps in `run` and `verify` jobs via Composite Action
