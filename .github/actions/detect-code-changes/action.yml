@@ -1,0 +1,31 @@
+name: Detect code changes
+description: Check whether a push or pull request contains changes which require code tests
+
+inputs:
+  plugin-dir:
+    description: Path to the plugin directory, relative to the workspace root
+    required: false
+    default: plugin
+  non-code-paths:
+    description: Newline-separated exact repository-relative paths which do not require code tests (empty means every changed file requires tests)
+    required: false
+    default: ''
+
+outputs:
+  code-changes:
+    description: Whether code tests are needed ("true" or "false")
+    value: ${{ steps.detect.outputs.code-changes }}
+
+runs:
+  using: composite
+  steps:
+    - name: Detect code changes
+      id: detect
+      shell: bash
+      env:
+        PLUGIN_DIR: ${{ inputs.plugin-dir }}
+        NON_CODE_PATHS: ${{ inputs.non-code-paths }}
+        EVENT_NAME: ${{ github.event_name }}
+        BEFORE_SHA: ${{ github.event.pull_request.base.sha || github.event.before }}
+        AFTER_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+      run: bash "$GITHUB_ACTION_PATH/detect-code-changes.sh"

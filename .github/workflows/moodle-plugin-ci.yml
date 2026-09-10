@@ -7,6 +7,18 @@ on:
         description: Run the tests on this Moodle core branch (if not provided, the branch will be auto-detected from current branch)
         type: string
         required: false
+      non-code-paths:
+        description: Newline-separated exact repository-relative paths which do not require code tests (replaces the default list; empty disables non-code file skipping)
+        type: string
+        required: false
+        default: |
+          README
+          README.md
+          README.txt
+          CHANGES
+          CHANGES.md
+          CHANGES.txt
+          CHANGES.html
       plugin-dependencies:
         description: List of plugin dependencies with repository and branch (use one dependency per line and separate repository and branch with a comma)
         type: string
@@ -174,6 +186,7 @@ jobs:
       codebase-check-completeness: ${{ steps.resolve-inputs.outputs.codebase-check-completeness }}
       codebase-check-completeness-casesensitive: ${{ steps.resolve-inputs.outputs.codebase-check-completeness-casesensitive }}
       codebase-check-languagepacks: ${{ steps.resolve-inputs.outputs.codebase-check-languagepacks }}
+      code-changes: ${{ steps.detect-code-changes.outputs.code-changes }}
     steps:
       - name: Checkout calling plugin repository
         uses: actions/checkout@v6
@@ -181,6 +194,26 @@ jobs:
           fetch-depth: 0
           path: calling-repo
           persist-credentials: false
+
+      - name: Pull request content checker
+        uses: JJ/github-pr-contains-action@releases/v14
+        if: ${{ !cancelled() && github.event_name == 'pull_request' && (inputs.pr-check-diff-contains != '' || inputs.pr-check-diff-does-not-contain != '' || inputs.pr-check-body-contains != '' || inputs.pr-check-body-does-not-contain != '' || inputs.pr-check-files-changed != '' || inputs.pr-check-lines-changed != '' || inputs.pr-check-waived-users != '') }}
+        with:
+          github-token: ${{ github.token }}
+          diffContains: ${{ inputs.pr-check-diff-contains }}
+          diffDoesNotContain: ${{ inputs.pr-check-diff-does-not-contain }}
+          bodyContains: ${{ inputs.pr-check-body-contains }}
+          bodyDoesNotContain: ${{ inputs.pr-check-body-does-not-contain }}
+          filesChanged: ${{ inputs.pr-check-files-changed }}
+          linesChanged: ${{ inputs.pr-check-lines-changed }}
+          waivedUsers: ${{ inputs.pr-check-waived-users }}
+
+      - name: Detect code changes
+        id: detect-code-changes
+        uses: moodle-an-hochschulen/moodle-workflows/.github/actions/detect-code-changes@main
+        with:
+          plugin-dir: calling-repo
+          non-code-paths: ${{ inputs.non-code-paths }}
 
       - name: Determine Moodle core branch
         id: determine-branch
@@ -473,6 +506,7 @@ jobs:
     name: Static checks
     runs-on: ubuntu-24.04
     needs: preflight
+    if: ${{ needs.preflight.outputs.code-changes == 'true' }}
 
     services:
       postgres:
@@ -546,19 +580,6 @@ jobs:
         if: ${{ !cancelled() }}
         continue-on-error: ${{ needs.preflight.outputs.phpcs-continue-on-error == 'true' }}
         run: moodle-plugin-ci phpcs --max-warnings ${{ inputs.phpcs-max-warnings }}
-
-      - name: Pull request content checker
-        uses: JJ/github-pr-contains-action@releases/v14
-        if: ${{ !cancelled() && github.event_name == 'pull_request' && (inputs.pr-check-diff-contains != '' || inputs.pr-check-diff-does-not-contain != '' || inputs.pr-check-body-contains != '' || inputs.pr-check-body-does-not-contain != '' || inputs.pr-check-files-changed != '' || inputs.pr-check-lines-changed != '' || inputs.pr-check-waived-users != '') }}
-        with:
-          github-token: ${{ github.token }}
-          diffContains: ${{ inputs.pr-check-diff-contains }}
-          diffDoesNotContain: ${{ inputs.pr-check-diff-does-not-contain }}
-          bodyContains: ${{ inputs.pr-check-body-contains }}
-          bodyDoesNotContain: ${{ inputs.pr-check-body-does-not-contain }}
-          filesChanged: ${{ inputs.pr-check-files-changed }}
-          linesChanged: ${{ inputs.pr-check-lines-changed }}
-          waivedUsers: ${{ inputs.pr-check-waived-users }}
 
       - name: Moodle PHPDoc Checker
         if: ${{ !cancelled() }}
@@ -667,6 +688,7 @@ jobs:
     name: Runtime tests
     runs-on: ubuntu-24.04
     needs: preflight
+    if: ${{ needs.preflight.outputs.code-changes == 'true' }}
     env:
       GENERIC_USERNAME_1: ${{ secrets.GENERIC_USERNAME_1 }}
       GENERIC_PASSWORD_1: ${{ secrets.GENERIC_PASSWORD_1 }}
@@ -1021,6 +1043,7 @@ jobs:
     name: Runtime verification
     runs-on: ubuntu-24.04
     needs: [preflight, run]
+    if: ${{ needs.preflight.outputs.code-changes == 'true' }}
     env:
       GENERIC_USERNAME_1: ${{ secrets.GENERIC_USERNAME_1 }}
       GENERIC_PASSWORD_1: ${{ secrets.GENERIC_PASSWORD_1 }}
