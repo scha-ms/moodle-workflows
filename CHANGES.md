@@ -6,6 +6,7 @@ Changes
 
 ### Rolling release
 
+* 2026-09-10 - Skip expensive CI jobs when a push or pull request only changes non-code files
 * 2026-06-25 - Improve CI concurrency to deduplicate push and pull request runs on the same branch (use `tags-ignore` in the caller workflow's `on: push` trigger to avoid duplicate runs on release)
 * 2026-06-24 - Deduplicate runtime test steps in `run` and `verify` jobs via Composite Action
 * 2026-06-12 - Add option to split the Behat run across multiple parallel slices

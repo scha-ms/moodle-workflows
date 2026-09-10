@@ -124,12 +124,54 @@ jobs:
       matrix-run: ${{ steps.preflight-matrix.outputs.matrix-run }}
       matrix-verify: ${{ steps.preflight-matrix.outputs.matrix-verify }}
       moodle-core-branch: ${{ steps.determine-branch.outputs.moodle-core-branch }}
+      code-changes: ${{ steps.detect-code-changes.outputs.code-changes }}
     steps:
       - name: Checkout calling plugin repository
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
           path: calling-repo
+
+      - name: Detect code changes
+        id: detect-code-changes
+        run: |
+          # Skip expensive jobs only when every changed file is known to be non-code.
+          # Unknown files and diff errors are treated as code changes.
+          CODE=true
+          EVENT="${{ github.event_name }}"
+          if [ "$EVENT" = "push" ] || [ "$EVENT" = "pull_request" ]; then
+            if [ "$EVENT" = "pull_request" ]; then
+              BEFORE="${{ github.event.pull_request.base.sha }}"
+              AFTER="${{ github.event.pull_request.head.sha }}"
+              RANGE="$BEFORE...$AFTER"
+            else
+              BEFORE="${{ github.event.before }}"
+              AFTER="${{ github.sha }}"
+              RANGE="$BEFORE..$AFTER"
+            fi
+            ZERO=0000000000000000000000000000000000000000
+            if [ -n "$BEFORE" ] && [ -n "$AFTER" ] && [ "$BEFORE" != "$ZERO" ]; then
+              if CHANGED=$(git -C calling-repo diff --name-only "$RANGE"); then
+                CODE=false
+                while IFS= read -r FILE; do
+                  [ -z "$FILE" ] && continue
+                  # Keep this conservative and root-only. Project-specific documentation
+                  # can be excluded in the caller workflow with paths-ignore.
+                  case "$FILE" in
+                    README|README.md|README.txt|\
+                    CHANGES|CHANGES.md|CHANGES.txt|CHANGES.html|\
+                    CHANGELOG|CHANGELOG.md|CHANGELOG.txt|CHANGELOG.html|\
+                    LICENSE|LICENSE.md|LICENSE.txt|\
+                    COPYING|COPYING.md|COPYING.txt|\
+                    .gitignore|.gitattributes|.editorconfig) ;;
+                    *) CODE=true; break ;;
+                  esac
+                done <<< "$CHANGED"
+              fi
+            fi
+          fi
+          echo "Code changes detected: $CODE"
+          echo "code-changes=$CODE" >> "$GITHUB_OUTPUT"
 
       - name: Determine Moodle core branch
         id: determine-branch
@@ -336,6 +378,7 @@ jobs:
     name: Static checks
     runs-on: ubuntu-22.04
     needs: preflight
+    if: ${{ needs.preflight.outputs.code-changes == 'true' }}
 
     services:
       postgres:
@@ -477,6 +520,7 @@ jobs:
     name: Runtime tests
     runs-on: ubuntu-22.04
     needs: preflight
+    if: ${{ needs.preflight.outputs.code-changes == 'true' }}
     env:
       GENERIC_USERNAME_1: ${{ secrets.GENERIC_USERNAME_1 }}
       GENERIC_PASSWORD_1: ${{ secrets.GENERIC_PASSWORD_1 }}
@@ -504,7 +548,7 @@ jobs:
 
     steps:
       - name: Run moodle runtime tests
-        uses: moodle-an-hochschulen/moodle-workflows/.github/actions/moodle-runtime-tests@main
+        uses: scha-ms/moodle-workflows/.github/actions/moodle-runtime-tests@skip-non-code-changes
         with:
           php-version: ${{ matrix.php }}
           extensions: ${{ matrix.extensions }}
@@ -525,6 +569,7 @@ jobs:
     name: Runtime verification
     runs-on: ubuntu-22.04
     needs: [preflight, run]
+    if: ${{ needs.preflight.outputs.code-changes == 'true' }}
     env:
       GENERIC_USERNAME_1: ${{ secrets.GENERIC_USERNAME_1 }}
       GENERIC_PASSWORD_1: ${{ secrets.GENERIC_PASSWORD_1 }}
@@ -565,7 +610,7 @@ jobs:
 
     steps:
       - name: Run moodle runtime tests
-        uses: moodle-an-hochschulen/moodle-workflows/.github/actions/moodle-runtime-tests@main
+        uses: scha-ms/moodle-workflows/.github/actions/moodle-runtime-tests@skip-non-code-changes
         with:
           php-version: ${{ matrix.php }}
           extensions: ${{ matrix.extensions }}
