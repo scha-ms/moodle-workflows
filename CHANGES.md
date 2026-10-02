@@ -6,6 +6,7 @@ Changes
 
 ### Rolling release
 
+* 2026-10-02 - Cancel duplicate push and pull request CI runs and document tag exclusion.
 * 2026-09-23 - Deduplicate runtime test steps in `run` and `verify` jobs via YAML anchors and aliases
 * 2026-09-23 - Update moodle-release workflow to support the new notes parameter of the HQ GHA workflow
 * 2026-09-18 - Update moodle-release workflow to use the new Moodle Marketplace API
