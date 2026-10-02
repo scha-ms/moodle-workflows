@@ -6,6 +6,7 @@ Changes
 
 ### Rolling release
 
+* 2026-10-15 - Add optional preflight cancellation of duplicate PR and tag runs, resolves #4
 * 2026-10-08 - Add a Plugin Codebase Completeness Checker step to the static checks which fails if the plugin lacks version.php, its English language file, its privacy provider or COPYING.txt and which optionally requires the CHANGES.md, README.md and UPGRADE.md files as well, resolves #12
 * 2026-10-08 - Add a Language Pack Checker step which warns about language packs other than English, resolves #12
 * 2026-10-06 - Allow the phpcs-continue-on-error, mustache-continue-on-error, scss-deprecations and behat-strict parameters to be set organization-wide via configuration variables, resolves #24

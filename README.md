@@ -37,7 +37,7 @@ A comprehensive continuous integration workflow for Moodle plugins based on the 
 - **Strict Behat result handling** to let the runtime tests fail if Behat silently skipped scenarios because of pending or undefined steps
 - **Behat web server supervision** to restart the PHP web server automatically if it crashes during the Behat run, so that a single crash no longer fails the whole job
 - **Flaky Behat scenario reporting** to print a warning and to keep the Behat faildump if scenarios failed in the first attempt and only passed in the automatic rerun
-- **Concurrency handling** to cancel running jobs if a new commit is pushed to the same branch
+- **Concurrency handling** to cancel superseded runs on the same branch, with optional preflight cancellation of duplicate PR and tag runs
 - **Consecutive runtime testing** where the code is initially tested with the highest PHP version and Postgres only and the full matrix is only tested if that initial test was successful with the goal to save ressources
 - **Additional services support** including Redis service for plugins that require caching or session storage as well as Docker Compose support for arbitrary backend services like LDAP containers
 - **Pull request content validation** to automatically check PR content for required or forbidden text patterns, enforce ticket references, limit PR size, and exempt specific users from checks
@@ -75,6 +75,27 @@ jobs:
     with:
       moodle-core-branch: ${{ inputs.moodle-core-branch || github.event.client_payload.moodle-core-branch }}
 ```
+
+#### Concurrency
+
+By default (`concurrency-extended: false`), pushing a new commit to a branch cancels its previous run. Push, PR, and tag runs keep their existing, separate concurrency groups.
+
+With `concurrency-extended: true`, the last preflight step checks PR and tag-push runs for an earlier, in-progress run of the same workflow in the same repository testing the same commit SHA. If found, the current run cancels itself; otherwise it continues. Branch-push runs never cancel themselves in this step. PRs use the source commit SHA rather than GitHub's generated merge SHA. Completed runs are not reused. Keeping the earlier run prevents two duplicate PR/tag runs from cancelling each other.
+
+Enable this using the input or the organization/repository variable `MOODLE_PLUGIN_CI_CONCURRENCY_EXTENDED=true`. Cancellation requires `actions: write` on the calling job; preflight inherits the caller's permissions, while code-test jobs retain `contents: read`:
+
+```yaml
+jobs:
+  moodle-plugin-ci:
+    permissions:
+      contents: read
+      actions: write
+    uses: moodle-an-hochschulen/moodle-workflows/.github/workflows/moodle-plugin-ci.yml@main
+    with:
+      concurrency-extended: true
+```
+
+The existing push/PR triggers do not need filtering or `tags-ignore`. Read-only tokens, including normal fork PR tokens, cannot cancel runs: a rejected cancellation logs a warning and CI continues. Reusable workflows cannot elevate the caller's token permissions. Cancelling these runs requires a separate privileged mechanism and is not provided by this preflight step.
 
 #### More sophisticated setups
 
@@ -340,6 +361,7 @@ jobs:
 
 | Parameter | Type | Required | Default | Configuration variable | Description |
 |-----------|------|----------|---------|------------------------|-------------|
+| `concurrency-extended` | boolean | No | false | Supported | Cancel duplicate PR and tag runs at the end of preflight; requires Actions write permission. |
 | `moodle-core-branch` | string | No | auto-detected | None | Run the tests on this Moodle core branch (if not provided, the branch will be auto-detected from current branch) |
 | `plugin-dependencies` | string | No | - | None | List of plugin dependencies with repository and branch (use one dependency per line and separate repository and branch with a comma) |
 | `one-db-only` | boolean | No | false | None | Use only PostgreSQL database instead of all configured databases |
@@ -377,6 +399,7 @@ Most parameters of this workflow are specific to a particular plugin and belong 
 
 | Input Parameter | Corresponding configuration variable | Default |
 |-----------------|--------------------------------------|---------|
+| `concurrency-extended` | `MOODLE_PLUGIN_CI_CONCURRENCY_EXTENDED` | false |
 | `phpcs-continue-on-error` | `MOODLE_PLUGIN_CI_PHPCS_CONTINUE_ON_ERROR` | false |
 | `mustache-continue-on-error` | `MOODLE_PLUGIN_CI_MUSTACHE_CONTINUE_ON_ERROR` | false |
 | `scss-deprecations` | `MOODLE_PLUGIN_CI_SCSS_DEPRECATIONS` | true |
