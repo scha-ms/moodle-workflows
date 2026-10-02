@@ -3,6 +3,11 @@ name: Moodle Plugin CI
 on:
   workflow_call:
     inputs:
+      concurrency-extended:
+        description: Cancel a PR or tag run in preflight when an earlier run of this workflow is testing the same commit
+        type: boolean
+        required: false
+        default: false
       moodle-core-branch:
         description: Run the tests on this Moodle core branch (if not provided, the branch will be auto-detected from current branch)
         type: string
@@ -150,8 +155,9 @@ on:
         description: Generic secret to pass another password to the workflow, if needed
         required: false
 
-permissions:
-  contents: read
+# Preflight inherits the caller's permissions so extended cancellation can use
+# actions: write when granted, without requiring it for the default behaviour.
+# Jobs which execute plugin code are restricted to contents: read below.
 
 concurrency:
   group: ${{ github.repository }}-${{ github.workflow }}-${{ github.ref }}-${{ inputs.moodle-core-branch || 'auto' }}
@@ -280,6 +286,8 @@ jobs:
       - name: Resolve inputs with configuration variable fallback
         id: resolve-inputs
         env:
+          INPUT_CONCURRENCY_EXTENDED: ${{ inputs.concurrency-extended }}
+          VAR_CONCURRENCY_EXTENDED: ${{ vars.MOODLE_PLUGIN_CI_CONCURRENCY_EXTENDED }}
           INPUT_PHPCS_CONTINUE_ON_ERROR: ${{ inputs.phpcs-continue-on-error }}
           INPUT_MUSTACHE_CONTINUE_ON_ERROR: ${{ inputs.mustache-continue-on-error }}
           INPUT_SCSS_DEPRECATIONS: ${{ inputs.scss-deprecations }}
@@ -326,6 +334,7 @@ jobs:
             echo "$name: $value (from $source)"
             echo "$name=$value" >> "$GITHUB_OUTPUT"
           }
+          resolve concurrency-extended "$INPUT_CONCURRENCY_EXTENDED" MOODLE_PLUGIN_CI_CONCURRENCY_EXTENDED "$VAR_CONCURRENCY_EXTENDED" false "true false"
           resolve phpcs-continue-on-error "$INPUT_PHPCS_CONTINUE_ON_ERROR" MOODLE_PLUGIN_CI_PHPCS_CONTINUE_ON_ERROR "$VAR_PHPCS_CONTINUE_ON_ERROR" false "true false"
           resolve mustache-continue-on-error "$INPUT_MUSTACHE_CONTINUE_ON_ERROR" MOODLE_PLUGIN_CI_MUSTACHE_CONTINUE_ON_ERROR "$VAR_MUSTACHE_CONTINUE_ON_ERROR" false "true false"
           resolve scss-deprecations "$INPUT_SCSS_DEPRECATIONS" MOODLE_PLUGIN_CI_SCSS_DEPRECATIONS "$VAR_SCSS_DEPRECATIONS" true "true false"
@@ -469,10 +478,57 @@ jobs:
           echo "Matrix for verify job:"
           echo "${{ steps.preflight-matrix.outputs.matrix-verify }}"
 
+      - name: Cancel duplicate PR or tag run
+        if: ${{ steps.resolve-inputs.outputs.concurrency-extended == 'true' && (github.event_name == 'pull_request' || (github.event_name == 'push' && startsWith(github.ref, 'refs/tags/'))) }}
+        uses: actions/github-script@v8
+        with:
+          script: |
+            const repo = context.repo;
+            const current = (await github.rest.actions.getWorkflowRun({
+              ...repo, run_id: context.runId
+            })).data;
+            // PR github.sha is a synthetic merge commit; compare the source commit.
+            const sha = context.payload.pull_request?.head.sha || context.sha;
+            const runs = await github.paginate(github.rest.actions.listWorkflowRuns, {
+              ...repo, workflow_id: current.workflow_id, head_sha: sha,
+              status: 'in_progress', per_page: 100
+            });
+            // Keep the earlier run so simultaneous PR/tag runs cannot cancel
+            // each other. A completed run is not an active duplicate.
+            const duplicate = runs.find(run =>
+              run.id < context.runId && run.head_sha === sha
+            );
+            if (!duplicate) {
+              core.info(`No earlier active duplicate for ${sha}; continuing.`);
+              return;
+            }
+            // Recheck before cancelling: the other run may have just finished.
+            const active = (await github.rest.actions.getWorkflowRun({
+              ...repo, run_id: duplicate.id
+            })).data;
+            if (active.status !== 'in_progress') {
+              core.info('The duplicate has finished; continuing.');
+              return;
+            }
+            core.info(`Duplicate ${sha}: ${duplicate.html_url}. Cancelling this run.`);
+            try {
+              await github.rest.actions.cancelWorkflowRun({...repo, run_id: context.runId});
+            } catch (error) {
+              if (error.status === 403) {
+                core.warning('Cancellation requires actions: write. Fork PR tokens are normally read-only; continuing with CI.');
+                return;
+              }
+              throw error;
+            }
+            // Let this step finish so GitHub can complete the cancellation.
+            core.info('Cancellation requested successfully.');
+
   static:
     name: Static checks
     runs-on: ubuntu-24.04
     needs: preflight
+    permissions:
+      contents: read
 
     services:
       postgres:
@@ -667,6 +723,8 @@ jobs:
     name: Runtime tests
     runs-on: ubuntu-24.04
     needs: preflight
+    permissions:
+      contents: read
     env:
       GENERIC_USERNAME_1: ${{ secrets.GENERIC_USERNAME_1 }}
       GENERIC_PASSWORD_1: ${{ secrets.GENERIC_PASSWORD_1 }}
@@ -1021,6 +1079,8 @@ jobs:
     name: Runtime verification
     runs-on: ubuntu-24.04
     needs: [preflight, run]
+    permissions:
+      contents: read
     env:
       GENERIC_USERNAME_1: ${{ secrets.GENERIC_USERNAME_1 }}
       GENERIC_PASSWORD_1: ${{ secrets.GENERIC_PASSWORD_1 }}
