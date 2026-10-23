@@ -210,7 +210,7 @@ jobs:
 
       - name: Detect code changes
         id: detect-code-changes
-        uses: moodle-an-hochschulen/moodle-workflows/.github/actions/detect-code-changes@main
+        uses: scha-ms/moodle-workflows/.github/actions/detect-code-changes@4e3d4550d0eb5bd0afbf7bee3ba80ec35e4dfdd7
         with:
           plugin-dir: calling-repo
           non-code-paths: ${{ inputs.non-code-paths }}
