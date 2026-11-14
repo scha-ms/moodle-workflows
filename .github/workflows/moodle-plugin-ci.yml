@@ -58,6 +58,11 @@ on:
         type: number
         required: false
         default: 1
+      behat-webserver-workers:
+        description: Number of worker processes of the PHP built-in web server which serves the Behat site (1 = a single process which handles one request at a time). Set it to more than 1 if the plugin lets the site make HTTP requests to its own wwwroot during a Behat scenario.
+        type: number
+        required: false
+        default: 1
       behat-strict:
         description: Let the runtime tests fail if Behat reports pending or undefined steps (which Behat itself does not treat as failures)
         type: boolean
@@ -849,9 +854,17 @@ jobs:
       # immediately if it dies and logs its output and exit codes for later diagnosis.
       - name: Start Selenium and PHP web server for Behat
         if: ${{ !cancelled() }}
+        env:
+          BEHAT_WEBSERVER_WORKERS: ${{ inputs.behat-webserver-workers }}
         run: |
           MOODLE_DIR="${{ github.workspace }}/moodle"
           WEBSERVER_LOG="${{ runner.temp }}/php-webserver.log"
+
+          # Accept only a positive integer as number of web server workers.
+          if ! [[ "$BEHAT_WEBSERVER_WORKERS" =~ ^[1-9][0-9]*$ ]]; then
+            echo "::error::Invalid value '$BEHAT_WEBSERVER_WORKERS' for the input behat-webserver-workers. It must be a positive integer."
+            exit 1
+          fi
 
           # Start Selenium with the same options as moodle-plugin-ci does (host networking, shared memory,
           # Moodle directory mounted at the same path for file uploads in Behat).
@@ -871,9 +884,21 @@ jobs:
           # A plain Bash loop is used instead of a systemd transient unit (systemd-run with Restart=always) because it
           # needs no sudo, runs as the runner user with the PHP from setup-php, writes its log to a plain file and
           # can be tested locally.
+          # By default, the PHP built-in web server is a single process which handles one request at a time. A request
+          # which the site makes to its own wwwroot while rendering a page then waits for the page request to finish
+          # and runs into its timeout. If the plugin needs such requests, it can ask for several worker processes via
+          # the behat-webserver-workers input which is passed to the server as PHP_CLI_SERVER_WORKERS. With several
+          # workers, the supervisor loop below still restarts the server if its main process exits (the workers exit
+          # with it). A crashed worker, however, is not replaced by the main process and is neither restarted nor
+          # logged by the supervisor loop, as the server process as a whole keeps running. See the README for details.
           cat > "${{ runner.temp }}/php-webserver-supervisor.sh" <<'EOF'
           #!/bin/bash
           DOCROOT="$1"
+          WORKERS="$2"
+          if [ "$WORKERS" -gt 1 ]; then
+            export PHP_CLI_SERVER_WORKERS="$WORKERS"
+            echo "$(date -u '+%Y-%m-%dT%H:%M:%SZ') ::: Starting php -S with $WORKERS workers"
+          fi
           while true; do
             php -S localhost:8000 -t "$DOCROOT"
             STATUS=$?
@@ -881,7 +906,7 @@ jobs:
             sleep 1
           done
           EOF
-          nohup bash "${{ runner.temp }}/php-webserver-supervisor.sh" "$DOCROOT" > "$WEBSERVER_LOG" 2>&1 &
+          nohup bash "${{ runner.temp }}/php-webserver-supervisor.sh" "$DOCROOT" "$BEHAT_WEBSERVER_WORKERS" > "$WEBSERVER_LOG" 2>&1 &
 
           # Wait until both servers accept connections.
           for i in $(seq 1 60); do

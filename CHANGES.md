@@ -6,6 +6,7 @@ Changes
 
 ### Rolling release
 
+* 2026-11-14 - Add the behat-webserver-workers parameter to serve the Behat site with several PHP web server worker processes, so that the site can make HTTP requests to its own wwwroot during a Behat scenario, resolves #28
 * 2026-10-08 - Add a Plugin Codebase Completeness Checker step to the static checks which fails if the plugin lacks version.php, its English language file, its privacy provider or COPYING.txt and which optionally requires the CHANGES.md, README.md and UPGRADE.md files as well, resolves #12
 * 2026-10-08 - Add a Language Pack Checker step which warns about language packs other than English, resolves #12
 * 2026-10-06 - Allow the phpcs-continue-on-error, mustache-continue-on-error, scss-deprecations and behat-strict parameters to be set organization-wide via configuration variables, resolves #24

@@ -36,6 +36,7 @@ A comprehensive continuous integration workflow for Moodle plugins based on the 
 - **Behat parallelization** to split the Behat run across multiple parallel jobs, distributing the plugin's feature files by scenario count to shorten the overall runtime
 - **Strict Behat result handling** to let the runtime tests fail if Behat silently skipped scenarios because of pending or undefined steps
 - **Behat web server supervision** to restart the PHP web server automatically if it crashes during the Behat run, so that a single crash no longer fails the whole job
+- **Behat web server workers** to serve the Behat site with several PHP web server processes, so that the site can make HTTP requests to its own wwwroot during a Behat scenario
 - **Flaky Behat scenario reporting** to print a warning and to keep the Behat faildump if scenarios failed in the first attempt and only passed in the automatic rerun
 - **Concurrency handling** to cancel running jobs if a new commit is pushed to the same branch
 - **Consecutive runtime testing** where the code is initially tested with the highest PHP version and Postgres only and the full matrix is only tested if that initial test was successful with the goal to save ressources
@@ -275,6 +276,20 @@ jobs:
       behat-slices: 4
 ```
 
+#### With several Behat web server workers
+
+```yaml
+name: Moodle Plugin CI
+
+on:
+  [...]
+
+jobs:
+  moodle-plugin-ci:
+    with:
+      behat-webserver-workers: 4
+```
+
 #### With SCSS deprecations disabled
 
 ```yaml
@@ -353,6 +368,7 @@ jobs:
 | `behat-tags` | string | No | - | None | Behat tags to filter which Behat scenarios to run (e.g. "@javascript"). Separate multiple tags with a comma, but without any spaces in-between. |
 | `behat-timeout` | number | No | - | None | Behat timeout multiplier (e.g. 3 for 3x timeout) |
 | `behat-slices` | number | No | 1 | None | Number of parallel Behat slices to split the Behat run across (1 = no splitting). Each slice runs a subset of the plugin's Behat feature files in its own job, distributed by scenario count. |
+| `behat-webserver-workers` | number | No | 1 | None | Number of worker processes of the PHP built-in web server which serves the Behat site (1 = a single process which handles one request at a time). Set it to more than 1 if the plugin lets the site make HTTP requests to its own wwwroot during a Behat scenario. |
 | `behat-strict` | boolean | No | true | Supported | Let the runtime tests fail if Behat reports pending or undefined steps (which Behat itself does not treat as failures) |
 | `pr-check-diff-contains` | string | No | - | None | Pull request diff must contain this text |
 | `pr-check-diff-does-not-contain` | string | No | - | None | Pull request diff must not contain this text |
@@ -590,6 +606,25 @@ The output of the PHP web server, including its exit codes, is written to a log 
 - If the Behat run fails or if the web server had to be restarted, the log file is uploaded as the `PHP web server log` artifact. In the second case this happens even if the job passed, so that the cause of the crash can be examined.
 
 No configuration is needed for this, it is always active. If you set `MOODLE_BEHAT_SELENIUM_IMAGE` in your environment, it is respected just like moodle-plugin-ci does.
+
+### Behat web server workers
+
+By default, the PHP built-in web server which serves the Behat site is a single process which handles one request at a time. This is a problem for plugins which let the Moodle site make an HTTP request to its own wwwroot while it renders a page, e.g. to check if a URL of the plugin is available. The second request waits in the queue until the first request is done, but the first request waits for the second one. This deadlock is only resolved by the timeout of the second request, so the request fails and the Behat scenario can't pass, although it passes on a real webserver like Apache.
+
+If your plugin needs such requests, set `behat-webserver-workers` to the number of worker processes you want (e.g. `behat-webserver-workers: 4`). The workflow then passes this number to the PHP web server as `PHP_CLI_SERVER_WORKERS`, so that several requests are served in parallel, like on a real webserver. The default of `1` keeps the single process.
+
+Notes:
+
+- With several workers, all Behat scenarios of the plugin are served in parallel. Moodle handles concurrent requests within the same session with its session locking, but you should watch the first runs for flaky scenarios which did not show up before.
+- With several workers, the PHP web server consists of a main process and the given number of worker processes, which are forked from the main process. The main process accepts requests as well, so `behat-webserver-workers: 3` results in four processes which serve requests.
+
+How the workers interact with the [Behat web server supervision](#behat-web-server-supervision):
+
+- If the main process crashes, the worker processes exit as well. The supervisor loop restarts the server with the same number of workers, logs the exit code and counts the restart, just like with a single process.
+- If a worker process crashes, the main process does not replace it. The server keeps running with one worker less, and as the server process as a whole did not exit, the supervisor loop neither restarts the server nor logs or counts the crash.
+- If all worker processes have crashed, only the main process is left. The server then handles one request at a time again and requests which the site makes to its own wwwroot run into their timeout again, until the main process crashes as well and the supervisor loop restarts the whole server.
+
+This behaviour is accepted as worker crashes should be rare and a run which has lost all its workers is still caught by the failing scenarios. If you see scenarios which make requests to the site's own wwwroot fail late in a long Behat run, consider raising the number of workers.
 
 ### Flaky Behat scenario reporting
 
