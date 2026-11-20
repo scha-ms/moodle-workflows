@@ -360,7 +360,7 @@ jobs:
           persist-credentials: false
 
       - name: Development Leftover Checker
-        uses: moodle-an-hochschulen/moodle-workflows/.github/actions/development-leftover-check@main
+        uses: scha-ms/moodle-workflows/.github/actions/development-leftover-check@04aedbf42de1908432b85b9d9cbd8c37435f5fb1
         with:
           plugin-dir: calling-repo
 
