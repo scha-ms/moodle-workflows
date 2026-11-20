@@ -354,8 +354,8 @@ jobs:
       - name: Check out moodle-workflows repository code
         uses: actions/checkout@v6
         with:
-          repository: moodle-an-hochschulen/moodle-workflows
-          ref: main
+          repository: scha-ms/moodle-workflows
+          ref: 95b3cfa5252582a4f346f60fbad9b18b10910665
           path: preflight
           persist-credentials: false
 
