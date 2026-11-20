@@ -25,7 +25,7 @@ A comprehensive continuous integration workflow for Moodle plugins based on the 
 ### Enhanced features beyond standard moodle-plugin-ci
 
 - **Automatic Moodle branch detection** from the Moodle plugin repository branch or from the plugin's version.php file
-- **Development leftover detection** to catch leftovers like *TODO* comments or unresolved merge conflicts
+- **Early development leftover detection** to reject *TODO* comments, unresolved merge conflicts, committed `.gitignore` files, IDE artefacts (IntelliJ, VS Code, and similar) and macOS `.DS_Store` files before expensive CI jobs start
 - **Plugin codebase completeness check** to make sure that the plugin ships the files which every Moodle plugin needs plus additional optional files on top
 - **Language pack check** to warn about language packs other than English which should rather be managed in AMOS
 - **Easy plugin dependency addition** for plugins that depend on other plugins

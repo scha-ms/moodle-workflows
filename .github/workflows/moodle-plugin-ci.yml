@@ -359,6 +359,14 @@ jobs:
           path: preflight
           persist-credentials: false
 
+      - name: Development Leftover Checker
+        uses: asamarts/alint@9f9d34ba0eae3888299b9e570f43338b0e7f2cdb # v0.16.1
+        with:
+          version: v0.16.1
+          path: calling-repo
+          config: preflight/.github/workflows/moodle-plugin-ci.alint/alint.yml
+          format: github
+
       - name: Create CI matrix from JSON
         id: preflight-matrix
         run: |
@@ -568,32 +576,6 @@ jobs:
       - name: Moodle PHPDoc Checker
         if: ${{ !cancelled() }}
         run: moodle-plugin-ci phpdoc --max-warnings ${{ inputs.phpdoc-max-warnings }}
-
-      - name: Development Leftover Checker
-        if: ${{ !cancelled() }}
-        run: |
-          echo "Checking for development leftovers..."
-
-          # Define patterns to search for
-          PATTERNS=("@testme" "TODO" "<<<<<<< HEAD")
-
-          # Check each pattern
-          FOUND_ISSUES=false
-          for pattern in "${PATTERNS[@]}"; do
-            echo "Searching for: $pattern"
-            if grep -rn --exclude-dir=.git --exclude-dir=node_modules --exclude-dir=vendor "$pattern" ./plugin/; then
-              FOUND_ISSUES=true
-              echo ""
-            fi
-          done
-
-          # Fail if any issues were found
-          if [ "$FOUND_ISSUES" = true ]; then
-            echo "Development leftovers detected! Please clean up the code."
-            exit 1
-          else
-            echo "No development leftovers found."
-          fi
 
       - name: Plugin Codebase Completeness Checker
         if: ${{ !cancelled() && needs.preflight.outputs.codebase-check-completeness != 'off' }}
