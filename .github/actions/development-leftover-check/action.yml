@@ -1,0 +1,19 @@
+name: Development Leftover Checker
+description: Fail if the plugin codebase contains development leftovers like TODO comments or unresolved merge conflicts, or committed .gitignore files, IDE artefacts and .DS_Store files
+
+inputs:
+  plugin-dir:
+    description: Path to the plugin directory, relative to the workspace root
+    required: false
+    default: plugin
+
+runs:
+  using: composite
+  steps:
+    - name: Check the plugin for development leftovers
+      uses: asamarts/alint@9f9d34ba0eae3888299b9e570f43338b0e7f2cdb # v0.16.1
+      with:
+        version: v0.16.1
+        path: ${{ inputs.plugin-dir }}
+        config: ${{ github.action_path }}/alint.yml
+        format: github

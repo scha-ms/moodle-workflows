@@ -1,0 +1,44 @@
+# yaml-language-server: $schema=https://alint.org/_alint/configuration/schema.json
+# Policy for Moodle plugin development leftover / IDE artefact checks.
+version: 1
+
+ignore:
+  - "vendor/**"
+  - "node_modules/**"
+
+rules:
+  - id: no-development-artefacts
+    kind: git_no_denied_paths
+    denied:
+      - ".gitignore"
+      - "**/.gitignore"
+      - ".DS_Store"
+      - "**/.DS_Store"
+      - ".idea/**"
+      - "**/.idea/**"
+      - "*.iml"
+      - ".vscode/**"
+      - "**/.vscode/**"
+      - ".cursor/**"
+      - "**/.cursor/**"
+      - ".project"
+      - ".classpath"
+      - ".settings/**"
+      - "**/.settings/**"
+      - ".vs/**"
+      - "**/.vs/**"
+      - "*.suo"
+      - "*.sublime-project"
+      - "*.sublime-workspace"
+      - "*~"
+      - "*.swp"
+      - "*.swo"
+    level: error
+    message: "Development or IDE artefact must not be committed to the plugin codebase"
+
+  - id: no-development-leftovers
+    kind: file_content_forbidden
+    paths: "**/*"
+    pattern: '(@testme|TODO|<<<<<<< HEAD)'
+    level: error
+    message: "Development leftover marker found in plugin source"
